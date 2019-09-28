@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>File Server</title>
+</head>
+<body>
+    <div style="text-align: center">
+        <h1 >Welcome to file server</h1>
+        <input id="fileSelector" type="file"/>
+        <button onclick="uploadFile()" id="btnSubmit" type="button">Upload</button>
+        <h3>Download File</h3>
+        <input id="fileName" type="text"/>
+        <button onclick="downloadFile()" id="btnDownload" type="button">Download</button>
+    </div>
+</body>
+<script src="https://code.jquery.com/jquery-3.4.1.js" integrity="sha256-WpOohJOqMqqyKL9FccASB9O0KwACQJpFTUBLTYOVvVU=" crossorigin="anonymous"></script>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  window.addEventListener("load", Ready);
+  var fs = require('fs');
+  var socket = io.connect('http://localhost:2019');
+  var selectedFile, fReader, slice;
+
+  socket.on('news', (data) => {
+    console.log(data);
+    socket.emit('my other event', { my: 'data' });
+  });
+
+  socket.on('request slice upload', (data) => {
+    console.log("client listening ...", data)
+    var place = data.currentSlice * 100000,
+      slice = selectedFile.slice(place, place + Math.min(100000, selectedFile.size - place));
+
+    fReader.readAsArrayBuffer(slice);
+  });
+
+  socket.on('end upload', () => {
+    console.log("UPLOAD SUCCESS !")
+  })
+
+  socket.on('upload error', () => {
+    console.log("UPLOAD ERROR !")
+  })
+
+  function Ready(){
+    document.getElementById('fileSelector').addEventListener('change', chooseFile);
+  }
+
+  function chooseFile(e) {
+    selectedFile = e.target.files[0];
+  }
+  
+  function uploadFile() {
+    if(document.getElementById("fileSelector").value !== "") {
+      fReader = new FileReader()
+      slice = selectedFile.slice(0, 100000) // limit the upload to 100 kBytes/s or 100,000 Bytes
+      fReader.readAsArrayBuffer(slice)
+
+      fReader.onload = function(e) {
+        var arrayBuffer = fReader.result;
+        socket.emit('upload-file', {
+          name: selectedFile.name,
+          type: selectedFile.type,
+          size: selectedFile.size,
+          data: arrayBuffer
+        });
+      }
+    } else {
+      alert("Please enter the file!")
+    }
+  }
+
+  function downloadFile(name, originalFilename) {
+
+    var deferred = $.Deferred();
+
+    //== Create stream for file to be streamed to and buffer to save chunks
+    var stream = fs.createStream(),
+      fileBuffer = [],
+      fileLength = 0;
+
+    //== Emit/Request
+    socket.emit('file_download', stream, name, function (fileError, fileInfo) {
+      if (fileError) {
+        deferred.reject(fileError);
+      } else {
+
+        console.log(['File Found!', fileInfo]);
+
+        //== Receive data
+        stream.on('data', function (chunk) {
+          fileLength += chunk.length;
+          var progress = Math.floor((fileLength / fileInfo.size) * 100);
+          progress = Math.max(progress - 2, 1);
+          deferred.notify(progress);
+          fileBuffer.push(chunk);
+        });
+
+        stream.on('end', function () {
+
+          var filedata = new Uint8Array(fileLength),
+            i = 0;
+
+          //== Loop to fill the final array
+          fileBuffer.forEach(function (buff) {
+            for (var j = 0; j < buff.length; j++) {
+              filedata[i] = buff[j];
+              i++;
+            }
+          });
+
+          deferred.notify(100);
+
+          //== Download file in browser
+          downloadFileFromBlob([filedata], originalFilename);
+
+          deferred.resolve();
+        });
+      }
+    });
+
+    //== Return
+    return deferred;
+  }
+
+  var downloadFileFromBlob = (function () {
+    var a = document.createElement("a");
+    document.body.appendChild(a);
+    a.style = "display: none";
+    return function (data, fileName) {
+      var blob = new Blob(data, {
+          type : "octet/stream"
+        }),
+        url = window.URL.createObjectURL(blob);
+      a.href = url;
+      a.download = fileName;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    };
+  }());
+</script>
+</html>
