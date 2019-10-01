@@ -26,12 +26,15 @@ server.listen(port, () => console.log(`App listening on port ${port}!`));
 app.get('/', (req, res) => res.sendFile(__dirname + '/index.html'))
 
 io.on('connection', (socket) => {
-  socket.emit('news', { hello: 'world' });
-  socket.on('my other event',  (data) => {
+  socket.on('dowload-file',  (data) => {
     console.log(data);
+    fs.readFile(__dirname + '/public/'+ data.name, (err, data) => {
+      if(err)console.log(err)
 
+      console.log(data)
+      socket.emit('respone-download', data)
+    })
   });
-  socket
   // set 10 second - send data info to master server
   setInterval( () => {
     socket.emit('receive_file_info', {data: getAllFilesFromFolder()})
@@ -57,6 +60,7 @@ io.on('connection', (socket) => {
         delete files[data.name];
         if (err) return socket.emit('upload error');
         socket.emit('end upload');
+        socket.emit('receive_file_info', {data: getAllFilesFromFolder()})
         console.log("UPLOAD SUCCESS")
       });
     } else {
@@ -65,20 +69,14 @@ io.on('connection', (socket) => {
       });
     }
   })
-  //
-  socket.emit("message", "connected")
-  socket.on('message', (data) => {
-    console.log(data);
-    // var address = srv.address();
-    // var client = dgram.createSocket("udp4");
-    // var message = new Buffer(data);
-    // client.send(message, 0, message.length, address.port, address.address, function(err, bytes) {
-    //   client.close();
-    // });
-  });
 });
 
-
+/*===================DOWNLOAD-FILE===================*/
+app.get('/download', (req, res) => {
+  console.log("download - ", req.query.filename)
+  const dirFile = './public/'+ req.query.filename;
+  res.download(dirFile); // Set disposition and send it.
+})
 
 /*===========================Initialize a UDP server=============================*/
 server_download.on('message', (msg, rinfo) => {
@@ -94,12 +92,10 @@ server_download.on('listening', (name) => {
     server_download.emit("send_file_download", {buffer: data})
     console.log('send file to client ...');
   })
-
 })
-
 server_download.bind(7788)
 
-/*=========================== COMMON FUNCTION==============================*/
+/*=========================== COMMON FUNC==============================*/
 const getAllFilesFromFolder = () => {
   let results = []
   const dir = './public/'

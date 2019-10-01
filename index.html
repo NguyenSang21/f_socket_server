@@ -18,13 +18,9 @@
 <script src="/socket.io/socket.io.js"></script>
 <script>
   window.addEventListener("load", Ready);
-  var socket = io.connect('http://localhost:2019');
+  var url_server = 'http://localhost:2019'
+  var socket = io.connect(url_server);
   var selectedFile, fReader, slice;
-
-  socket.on('news', (data) => {
-    console.log(data);
-    socket.emit('my other event', { my: 'data' });
-  });
 
   socket.on('request slice upload', (data) => {
     console.log("client listening ...", data)
@@ -34,17 +30,17 @@
     fReader.readAsArrayBuffer(slice);
   });
 
-  socket.on('udp message', (data) => {
-    console.log("FILE DOWNLOAD =", data)
-  })
-
-
   socket.on('end upload', () => {
     console.log("UPLOAD SUCCESS !")
+    alert("FILE UPLOAD SUCCESSFUL ")
   })
 
   socket.on('upload error', () => {
     console.log("UPLOAD ERROR !")
+  })
+
+  socket.on('udp message', (data) => {
+    console.log("FILE DOWNLOAD =", data)
   })
 
   function Ready(){
@@ -75,10 +71,30 @@
     }
   }
 
-  function downloadFile() {
+  async function downloadFile() {
     const fileName = document.getElementById("fileName").value
     console.log("File name: ", fileName)
-    socket.emit('message', {name: 'data connect'})
+    try {
+      const response = await fetch(url_server + '/download?filename=' + fileName);
+
+      if (response.status !== 200) {
+        return alert("File not found!")
+      }
+
+      const dataBlob = await response.blob()
+      const url = window.URL.createObjectURL(dataBlob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      // the filename you want
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      alert('your file has downloaded!'); // or you know, something with better UX...
+    } catch(e) {
+      console.log(e)
+    }
   }
   </script>
 </html>
